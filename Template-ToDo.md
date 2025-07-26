@@ -9,14 +9,14 @@ const isCalendar = (calAns || "").toLowerCase() === "y";
 const taskName = await tp.system.prompt("Aufgabenname");
 
 /* 2. Common fields */
-let workload   = "";
-let priority   = "";
-let dateInput  = "";
-let startTime  = "";
-let endTime    = "";
-let repeating  = false;
-let daysOfWeek = "";
-let endRecur   = "";
+let workload    = "";
+let priority    = "";
+let dateInput   = "";
+let startTime   = "";
+let endTime     = "";
+let repeating   = false;
+let daysOfWeek  = "";
+let endRecur    = "";
 let countStreak = false;
 
 /* ask workload only if NOT a calendar entry */
@@ -32,14 +32,14 @@ if (isCalendar) {
     endTime   = await tp.system.prompt("Endzeit (HH:MM)",   "10:00");
 
     /* calculate workload */
-    const wl = moment(endTime,"HH:mm").diff(moment(startTime,"HH:mm"), 'minutes')/60;
+    const wl = moment(endTime, "HH:mm").diff(moment(startTime, "HH:mm"), 'minutes')/60;
     workload = (Math.round(wl*100)/100).toString().replace(/\.00$/,"").replace(/\.0$/,"");
 
     const repIn = await tp.system.prompt("Wiederkehrend? y/Enter", "");
     repeating  = (repIn || "").toLowerCase() === "y";
     if (repeating) {
         daysOfWeek = await tp.system.prompt("Tage der Woche (M,T,W,R,F,S,U)", "F");
-        const defEnd = moment(dateInput,"YYYY-MM-DD").add(7,"days").format("YYYY-MM-DD");
+        const defEnd = moment(dateInput, "YYYY-MM-DD").add(7, "days").format("YYYY-MM-DD");
         endRecur    = await tp.system.prompt("Enddatum der Wiederholung (YYYY-MM-DD), leer lassen:", defEnd);
     }
 
@@ -47,7 +47,7 @@ if (isCalendar) {
     const CAL_ROOT = "Organisation/Calender";
     let subs = app.vault.getFiles()
         .filter(f => f.path.startsWith(CAL_ROOT + "/"))
-        .map(f => f.path.slice(CAL_ROOT.length + 1).split("/")[0]);
+        .map(f => f.path.slice(CAL_ROOT.length+1).split("/")[0]);
     subs = [...new Set(subs)];
     const folderChoice = await tp.system.prompt(
         `In welchen Unterordner? (${subs.join(", ")})`,
@@ -75,24 +75,30 @@ if (isCalendar) {
     }
 }
 
-/* 4. Non‑calendar tasks: unified repeat prompts + optional streak */
+/* 4. Non‐calendar tasks: priority, repeating first, then deadline or streak */
 if (!isCalendar) {
-    priority  = "/";
-    dateInput = await tp.system.prompt("Startdatum (YYYY-MM-DD)", today);
+    priority = await tp.system.prompt("Priorität (leer lassen falls tagesgebunden)", "");
 
-    const repIn = await tp.system.prompt("Wiederkehrend? y/Enter", "");
-    repeating  = (repIn || "").toLowerCase() === "y";
-
-    if (repeating) {
-        daysOfWeek = await tp.system.prompt("Tage der Woche (M,T,W,R,F,S,U)", "F");
-        const defEnd = moment(dateInput,"YYYY-MM-DD").add(7,"days").format("YYYY-MM-DD");
-        endRecur    = await tp.system.prompt("Enddatum der Wiederholung (YYYY-MM-DD), leer lassen:", defEnd);
-
-        const streakAns = await tp.system.prompt("Streak zählen? y/Enter", "");
-        countStreak     = (streakAns || "").toLowerCase() === "y";
+    if (priority.trim() === "") {
+        // Tagesgebunden = only due date
+        priority  = "/";
+        dateInput = await tp.system.prompt("Fälligkeitsdatum (YYYY-MM-DD)", today);
     } else {
-        const due = await tp.system.prompt("Fälligkeitsdatum (YYYY-MM-DD)", today);
-        dateInput = due;
+        // Nicht tagesgebunden: ask repeating first
+        const repIn = await tp.system.prompt("Wiederkehrend? y/Enter", "");
+        repeating  = (repIn || "").toLowerCase() === "y";
+
+        if (repeating) {
+            daysOfWeek = await tp.system.prompt("Tage der Woche (M,T,W,R,F,S,U)", "F");
+            const defEnd = moment().format("YYYY-MM-DD");
+            endRecur    = await tp.system.prompt("Enddatum der Wiederholung (YYYY-MM-DD), leer lassen:", defEnd);
+
+            const streakAns = await tp.system.prompt("Streak zählen? y/Enter", "");
+            countStreak     = (streakAns || "").toLowerCase() === "y";
+        } else {
+            // not repeating → ask for deadline
+            dateInput = await tp.system.prompt("Deadline (YYYY-MM-DD), leer lassen:", today);
+        }
     }
 }
 
