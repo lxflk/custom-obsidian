@@ -1,0 +1,4 @@
+ul.contains-task-list li>ul,
+ul.task-list li>ul {
+    display: none !important;
+}

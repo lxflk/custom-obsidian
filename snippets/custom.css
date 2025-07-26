@@ -1,0 +1,19 @@
+body {
+    --file-line-width: 1500px;
+}
+
+.markdown-preview-view,
+.markdown-source-view {
+    width: 100%;
+    /* Use full width of the container */
+    max-width: var(--file-line-width);
+    /* Set maximum width based on the variable */
+    margin-left: auto;
+    /* Auto margin on the left */
+    margin-right: auto;
+    /* Auto margin on the right - centers content */
+    overflow-x: auto;
+    /* Allows horizontal scrolling */
+    white-space: nowrap;
+    /* Prevents text from wrapping to new lines */
+}
