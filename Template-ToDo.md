@@ -16,6 +16,7 @@ let startTime   = "";
 let endTime     = "";
 let repeating   = false;
 let daysOfWeek  = "";
+let startRecur  = "";
 let endRecur    = "";
 let countStreak = false;
 
@@ -90,8 +91,10 @@ if (!isCalendar) {
 
         if (repeating) {
             daysOfWeek = await tp.system.prompt("Tage der Woche (M,T,W,R,F,S,U)", "F");
-            const defEnd = moment().format("YYYY-MM-DD");
-            endRecur    = await tp.system.prompt("Enddatum der Wiederholung (YYYY-MM-DD), leer lassen:", defEnd);
+            const dateTemplate = moment().format("YYYY-MM-DD");
+            startRecur = await tp.system.prompt("Startdatum der Wiederholung (YYYY-MM-DD), default heute:", dateTemplate);
+			startRecur = (startRecur || "").trim() || dateTemplate;
+            endRecur    = await tp.system.prompt("Enddatum der Wiederholung (YYYY-MM-DD), leer lassen:", dateTemplate);
 
             const streakAns = await tp.system.prompt("Streak zählen? y/Enter", "");
             countStreak     = (streakAns || "").toLowerCase() === "y";
@@ -109,17 +112,17 @@ const repeatingField = repeating ? ` 🔁` : "";
 let additionalFields = "";
 if (!repeating && priority.trim() !== "/") {
     additionalFields += `
-\t- created:: ${today}
+\t- created:: [::${today}]
 \t- start_prio:: ${priority}`;
 }
 if (repeating) {
     additionalFields += `
 \t- daysOfWeek:: ${daysOfWeek}
-\t- startStop:: [::${dateInput}]${endRecur.trim() ? " : [::" + endRecur + "]" : ""}`;
+\t- startStop:: [::${startRecur.trim()}]${endRecur.trim() ? " : [::" + endRecur + "]" : " : ♾️"}`;
     if (countStreak) {
         additionalFields += `
 \t- streak:: 0
-\t- streak_start:: ${today}`;
+\t- streak_start:: [::${today}]`;
     }
 }
 

@@ -6,8 +6,9 @@ module.exports = class UpdatePrioPlugin extends Plugin {
         this.registerEvent(
             this.app.workspace.on('layout-ready', async () => {
                 try {
-                    await this.updatePrio();
+                    // First update streaks (handles stale ticks), then priorities
                     await this.updateStreaks();
+                    await this.updatePrio();
                 } catch (err) {
                     console.error("Error in UpdatePrioPlugin:", err);
                     new Notice("Fehler beim Tages-Update – siehe Konsole.");
@@ -59,51 +60,32 @@ module.exports = class UpdatePrioPlugin extends Plugin {
 
                 /* ---------- 1A. weekly recurring tasks --------------- */
                 if (line.includes('🔁')) {
-                    // ensure there's a priority marker
                     if (!line.match(/\[🎯:: \S+?\]/)) continue;
 
                     let daysField = null;
                     let startDateStr = null;
                     let endDateStr = null;
 
-                    /* scan indented metadata lines */
                     let j = i + 1;
                     while (j < lines.length && /^[ \t]+- /.test(lines[j])) {
                         const sub = lines[j].trim();
-
                         const df = sub.match(/^-+\s*daysOfWeek::\s*([MTRFSWU,]+)/i);
                         if (df) daysField = df[1].replace(/\s+/g, '');
-
                         const ss = sub.match(/^-+\s*startStop::\s*\[\:\:(\d{4}-\d{2}-\d{2})\]\s*(?:\:\s*\[\:\:(\d{4}-\d{2}-\d{2})\])?/i);
                         if (ss) { startDateStr = ss[1]; endDateStr = ss[2] || null; }
-
                         j++;
                     }
 
-                    /* apply weekly rule only if daysOfWeek metadata found */
                     if (daysField) {
-                        // parse done date if any
+                        // parse done date if any, to know if ticked
                         const doneMatch = line.match(/✅\s*(\d{4}-\d{2}-\d{2})/);
-                        const doneDate = doneMatch ? moment(doneMatch[1], 'YYYY-MM-DD') : null;
-                        const hadTickDate = doneDate !== null;
-                        const didTickToday = hadTickDate && doneDate.isSame(today, 'day');
-
-                        // stale tick: clear if not ticked today
-                        if (hadTickDate && !didTickToday) {
-                            lines[i] = lines[i]
-                                .replace('- [x]', '- [ ]')
-                                .replace(/✅\s*\d{4}-\d{2}-\d{2}/, '')
-                                .trimEnd();
-                            changed = true;
-                            line = lines[i];
-                        }
+                        const hadTickDate = !!doneMatch;
 
                         // reload priority
                         const prioMatch2 = line.match(/\[🎯:: (\S+?)\]/);
                         if (!prioMatch2) continue;
                         let prioStr2 = prioMatch2[1];
 
-                        // weekday and date-range check
                         const weekdayOK = daysField.split(',').includes(isoLetter);
                         let rangeOK = true;
                         if (startDateStr) {
@@ -116,7 +98,6 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                         }
 
                         if (weekdayOK && rangeOK) {
-                            // activate if not already
                             if (prioStr2 !== '1') {
                                 lines[i] = lines[i].replace(/\[🎯:: (\S+?)\]/, `[🎯:: 1]`);
                                 changed = true;
@@ -129,7 +110,7 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                             }
                         }
 
-                        continue;   // skip normal deadline logic
+                        continue;
                     }
                 }
 
@@ -140,7 +121,6 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                 const prioStr = taskMatch[1];
                 const deadlineRaw = taskMatch[2];
 
-                /* ----- (i) priority “/” that becomes 1 on the day ----- */
                 if (prioStr === "/") {
                     const deadline = moment(deadlineRaw, 'YYYY-MM-DD');
                     if (deadline.isValid() && !today.isBefore(deadline)) {
@@ -150,7 +130,6 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                     continue;
                 }
 
-                /* ----- (ii) ageing numeric priorities ----- */
                 let prio = parseInt(prioStr, 10);
                 let startPrio = null;
                 let createdDate = null;
@@ -159,7 +138,8 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                 while (j < lines.length && /^[ \t]+- /.test(lines[j])) {
                     const sub = lines[j].trim();
                     const sp = sub.match(/^-+\s*start_prio:: (\d+)/i);
-                    const cd = sub.match(/^-+\s*created:: (\d{4}-\d{2}-\d{2})/i);
+                    /* ---- updated regex for [::date] ------- */
+                    const cd = sub.match(/^-+\s*created::\s*(?:\[\:\:)?(\d{4}-\d{2}-\d{2})(?:\])?/i);
                     if (sp) startPrio = parseInt(sp[1], 10);
                     if (cd) createdDate = cd[1];
                     j++;
@@ -178,13 +158,13 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                     lines[i] = line.replace(/\[🎯:: (\d+)\]/, `[🎯:: ${newPrio}]`);
                     changed = true;
                 }
-            } // for-lines
+            }
 
             if (changed) {
                 await this.app.vault.modify(file, lines.join('\n'));
                 console.log(`Updated priorities in ${file.path}`);
             }
-        } // for-files
+        }
 
         new Notice("Prioritäten wurden aktualisiert.");
     }
@@ -207,22 +187,15 @@ module.exports = class UpdatePrioPlugin extends Plugin {
 
             for (let i = 0; i < lines.length; i++) {
                 let line = lines[i];
-                if (!line.includes('🔁')) continue;  // only repeating tasks
+                if (!line.includes('🔁')) continue;
 
-                // Parse checkbox state
                 const cb = line.match(/^(- \[( |x)\])/);
                 if (!cb) continue;
                 const wasChecked = cb[2] === 'x';
 
-                // Parse done‐date if any
                 const doneMatch = line.match(/✅\s*(\d{4}-\d{2}-\d{2})/);
                 const doneDate = doneMatch ? moment(doneMatch[1], 'YYYY-MM-DD') : null;
 
-                // Parse current priority
-                const prioMatch = line.match(/\[🎯:: (\S+?)\]/);
-                let prio = prioMatch ? prioMatch[1] : '/';
-
-                // Scan metadata for daysOfWeek, startStop, streak, streak_start
                 let daysOfWeek, startStopStart, startStopEnd, streak, streakIdx, streakStart, streakStartIdx;
                 let j = i + 1;
                 while (j < lines.length && /^[ \t]+- /.test(lines[j])) {
@@ -237,7 +210,8 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                         streak = parseInt(m[1], 10);
                         streakIdx = j;
                     }
-                    if ((m = sub.match(/^-+\s*streak_start::\s*(\d{4}-\d{2}-\d{2})/i))) {
+                    /* ---- updated regex for [::date] ------- */
+                    if ((m = sub.match(/^-+\s*streak_start::\s*(?:\[\:\:)?(\d{4}-\d{2}-\d{2})(?:\])?/i))) {
                         streakStart = m[1];
                         streakStartIdx = j;
                     }
@@ -245,22 +219,13 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                 }
                 if (!daysOfWeek || !startStopStart || streak == null || !streakStart) continue;
 
-                const inScheduleToday = this.isScheduledDay(daysOfWeek, startStopStart, startStopEnd, today, moment);
-                const inScheduleYesterday = this.isScheduledDay(daysOfWeek, startStopStart, startStopEnd, yesterday, moment);
-
-                // Does stored streak match expected count up to yesterday?
                 const expected = this.countExpectedDays(daysOfWeek, streakStart, yesterday.format('YYYY-MM-DD'), moment);
                 const streakMatches = (expected === streak);
 
-                // --- 1) If it was checked ---
                 if (wasChecked && doneDate) {
-                    // 1.0 if done today, nothing to do
-                    if (doneDate.isSame(today, 'day')) {
-                        continue;
-                    }
-                    // 1.1 increase counter, untick, deactivate
+                    if (doneDate.isSame(today, 'day')) continue;
                     streak += 1;
-                    lines[streakIdx] = lines[streakIdx].replace(/\d+$/, streak.toString());
+                    lines[streakIdx] = lines[streakIdx].replace(/streak:: \d+/, `streak:: ${streak}`);
                     line = lines[i]
                         .replace('- [x]', '- [ ]')
                         .replace(/✅\s*\d{4}-\d{2}-\d{2}/, '')
@@ -269,40 +234,34 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                     lines[i] = line;
                     changed = true;
 
-                    // 1.2 if mismatch, reset streak
                     if (!streakMatches) {
                         streak = 0;
                         streakStart = today.format('YYYY-MM-DD');
                         lines[streakIdx] = lines[streakIdx].replace(/streak:: \d+/, `streak:: 0`);
                         lines[streakStartIdx] = lines[streakStartIdx]
-                            .replace(/streak_start:: \d{4}-\d{2}-\d{2}/, `streak_start:: ${streakStart}`);
+                            .replace(/streak_start::\s*(?:\[\:\:)?\d{4}-\d{2}-\d{2}(?:\])?/, `streak_start:: [::${streakStart}]`);
                         changed = true;
                     }
                 }
 
-                // Re-fetch line, prio, wasChecked for unticked logic
                 line = lines[i];
                 const cb2 = line.match(/^(- \[( |x)\])/);
                 const isCheckedNow = cb2 && cb2[2] === 'x';
                 const prioNow = (line.match(/\[🎯:: (\S+?)\]/) || [])[1] || '/';
 
-                // --- 2) If unticked (including just-unticked) ---
                 if (!isCheckedNow) {
-                    // 2.1 reset if mismatch
                     if (!streakMatches) {
                         streak = 0;
                         streakStart = today.format('YYYY-MM-DD');
                         lines[streakIdx] = lines[streakIdx].replace(/streak:: \d+/, `streak:: 0`);
                         lines[streakStartIdx] = lines[streakStartIdx]
-                            .replace(/streak_start:: \d{4}-\d{2}-\d{2}/, `streak_start:: ${streakStart}`);
+                            .replace(/streak_start::\s*(?:\[\:\:)?\d{4}-\d{2}-\d{2}(?:\])?/, `streak_start:: [::${streakStart}]`);
                         changed = true;
                     }
-                    // 2.2 if inactive but today is scheduled → activate
-                    if (prioNow === '/' && inScheduleToday) {
+                    if (prioNow === '/' && this.isScheduledDay(daysOfWeek, startStopStart, startStopEnd, today, moment)) {
                         lines[i] = line.replace(/\[🎯:: \S+?\]/, `[🎯:: 1]`);
                         changed = true;
                     }
-                    // 2.3 if already active, leave it
                 }
             }
 
