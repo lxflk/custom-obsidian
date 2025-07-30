@@ -219,7 +219,7 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                 }
                 if (!daysOfWeek || !startStopStart || streak == null || !streakStart) continue;
 
-                const expected = this.countExpectedDays(daysOfWeek, streakStart, yesterday.format('YYYY-MM-DD'), moment);
+                const expected = this.countExpectedDays(daysOfWeek, streakStart, today.format('YYYY-MM-DD'), moment);
                 const streakMatches = (expected === streak);
 
                 if (wasChecked && doneDate) {
