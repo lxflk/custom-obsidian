@@ -243,26 +243,6 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                         .replace(/streak_start::\s*(?:\[\:\:)?\d{4}-\d{2}-\d{2}(?:\])?/, `streak_start:: [::${streakStart}]`);
                     changed = true;
                 }
-
-                line = lines[i];
-                const cb2 = line.match(/^(- \[( |x)\])/);
-                const isCheckedNow = cb2 && cb2[2] === 'x';
-                const prioNow = (line.match(/\[🎯:: (\S+?)\]/) || [])[1] || '/';
-
-                if (!isCheckedNow) {
-                    if (!streakMatches) {
-                        streak = 0;
-                        streakStart = today.format('YYYY-MM-DD');
-                        lines[streakIdx] = lines[streakIdx].replace(/streak:: \d+/, `streak:: 0`);
-                        lines[streakStartIdx] = lines[streakStartIdx]
-                            .replace(/streak_start::\s*(?:\[\:\:)?\d{4}-\d{2}-\d{2}(?:\])?/, `streak_start:: [::${streakStart}]`);
-                        changed = true;
-                    }
-                    if (prioNow === '/' && this.isScheduledDay(daysOfWeek, startStopStart, startStopEnd, today, moment)) {
-                        lines[i] = line.replace(/\[🎯:: \S+?\]/, `[🎯:: 1]`);
-                        changed = true;
-                    }
-                }
             }
 
             if (changed) {
