@@ -9,6 +9,8 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                     // First update streaks (handles stale ticks), then priorities
                     await this.updateStreaks();
                     await this.updatePrio();
+                    // Finally, archive completed non-recurring tasks (only if completed before today)
+                    await this.archiveCompletedNonRecurringTasks();
                 } catch (err) {
                     console.error("Error in UpdatePrioPlugin:", err);
                     new Notice("Fehler beim Tages-Update – siehe Konsole.");
@@ -122,7 +124,7 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                 const deadlineRaw = taskMatch[2];
 
                 if (prioStr === "/") {
-                    const deadline = moment(deadlineRaw, 'YYYY-MM-DD');
+                    const deadline = window.moment(deadlineRaw, 'YYYY-MM-DD');
                     if (deadline.isValid() && !today.isBefore(deadline)) {
                         lines[i] = line.replace(/\[🎯:: (\/|\d+)\]/, `[🎯:: 1]`);
                         changed = true;
@@ -146,11 +148,11 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                 }
                 if (startPrio === null || createdDate === null) continue;
 
-                const creationMoment = moment(createdDate, 'YYYY-MM-DD');
+                const creationMoment = window.moment(createdDate, 'YYYY-MM-DD');
                 const daysSinceCreate = today.diff(creationMoment, 'days');
                 let newPrio = Math.max(startPrio - daysSinceCreate, 1);
 
-                const deadlineMoment = moment(deadlineRaw, 'YYYY-MM-DD');
+                const deadlineMoment = window.moment(deadlineRaw, 'YYYY-MM-DD');
                 if (deadlineMoment.isValid() &&
                     deadlineMoment.diff(today, 'days') <= 2) newPrio = 1;
 
@@ -194,7 +196,7 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                 const wasChecked = cb[2] === 'x';
 
                 const doneMatch = line.match(/✅\s*(\d{4}-\d{2}-\d{2})/);
-                const doneDate = doneMatch ? moment(doneMatch[1], 'YYYY-MM-DD') : null;
+                const doneDate = doneMatch ? window.moment(doneMatch[1], 'YYYY-MM-DD') : null;
 
                 let daysOfWeek, startStopStart, startStopEnd, streak, streakIdx, streakStart, streakStartIdx;
                 let j = i + 1;
@@ -232,7 +234,7 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                     changed = true;
                 }
 
-                const expected = this.countExpectedDays(daysOfWeek, streakStart, today.format('YYYY-MM-DD'), moment);
+                const expected = this.countExpectedDays(daysOfWeek, streakStart, today.format('YYYY-MM-DD'), window.moment);
                 const streakMatches = (expected === streak);
 
                 if (!streakMatches) {
@@ -252,5 +254,114 @@ module.exports = class UpdatePrioPlugin extends Plugin {
         }
 
         new Notice("Streaks wurden aktualisiert.");
+    }
+
+    /* ---------- 3. ARCHIVE COMPLETED NON-RECURRING TASKS -------------- */
+    async archiveCompletedNonRecurringTasks() {
+        console.log("Starting archiveCompletedNonRecurringTasks");
+
+        const moment = window.moment;
+        const today = moment().startOf('day');
+
+        const vault = this.app.vault;
+        const todoFiles = vault
+            .getMarkdownFiles()
+            .filter(f => f.basename.startsWith("ToDo"));
+
+        // Destination file (try existing, create if missing)
+        const candidateArchivePaths = [
+            "03 Collector/Organisation/Old-Tasks.md",
+            "03 Collector/Organisation/Old-Tasks"
+        ];
+        let archivePath = null;
+        let archiveFile = null;
+
+        for (const p of candidateArchivePaths) {
+            const f = vault.getAbstractFileByPath(p);
+            if (f) {
+                archivePath = p;
+                archiveFile = f;
+                break;
+            }
+        }
+        if (!archiveFile) {
+            // Create with .md by default
+            archivePath = candidateArchivePaths[0];
+            await vault.create(archivePath, "");
+            archiveFile = vault.getAbstractFileByPath(archivePath);
+            console.log(`Created archive file at ${archivePath}`);
+        }
+
+        let anyMoved = false;
+
+        for (let file of todoFiles) {
+            const original = await vault.read(file);
+            const lines = original.split('\n');
+
+            const kept = [];
+            const movedBlocks = [];
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+
+                // Detect top-level task line
+                const taskMatch = line.match(/^- \[( |x)\]/);
+                if (!taskMatch) {
+                    // Not a top-level task; keep as-is
+                    kept.push(line);
+                    continue;
+                }
+
+                const isChecked = taskMatch[1] === 'x';
+                const isRecurring = line.includes('🔁');
+
+                // Parse completion date on the task line (✅ YYYY-MM-DD)
+                const doneMatch = line.match(/✅\s*(\d{4}-\d{2}-\d{2})/);
+                const doneDate = doneMatch ? moment(doneMatch[1], 'YYYY-MM-DD') : null;
+
+                // Only archive if:
+                // - ticked
+                // - NOT recurring
+                // - has a done date AND that date is before today
+                const shouldArchive =
+                    isChecked &&
+                    !isRecurring &&
+                    doneDate &&
+                    doneDate.isBefore(today, 'day');
+
+                if (shouldArchive) {
+                    // Capture the entire task block: the task line + its indented "- " sublines
+                    const block = [line];
+                    let j = i + 1;
+                    while (j < lines.length && /^[ \t]+- /.test(lines[j])) {
+                        block.push(lines[j]);
+                        j++;
+                    }
+                    movedBlocks.push(block.join('\n'));
+                    // Skip over the captured block
+                    i = j - 1;
+                    anyMoved = true;
+                } else {
+                    // Keep the task (unchecked, recurring, or completed today/without date)
+                    kept.push(line);
+                }
+            }
+
+            // If something moved from this file, write back the remainder and append to archive
+            if (movedBlocks.length > 0) {
+                await vault.modify(file, kept.join('\n'));
+                console.log(`Archived ${movedBlocks.length} task(s) from ${file.path}`);
+
+                // Append moved tasks to archive file with separation
+                const toAppend = '\n' + movedBlocks.join('\n\n') + '\n';
+                await vault.append(archiveFile, toAppend);
+            }
+        }
+
+        if (anyMoved) {
+            new Notice("Abgehakte, nicht wiederkehrende Aufgaben (mit Abschlussdatum vor heute) wurden archiviert.");
+        } else {
+            console.log("No eligible completed non-recurring tasks to archive.");
+        }
     }
 };
