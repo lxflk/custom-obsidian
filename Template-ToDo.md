@@ -2,11 +2,11 @@
 const { moment } = window;
 const today = moment().format("YYYY-MM-DD");
 
+const taskName = await tp.system.prompt("Aufgabenname");
+
 /* 1. Is this a calendar entry? */
 const calAns     = await tp.system.prompt("Kalendereintrag? y = ja, Enter = nein", "");
 const isCalendar = (calAns || "").toLowerCase() === "y";
-
-const taskName = await tp.system.prompt("Aufgabenname");
 
 /* 2. Common fields */
 let workload    = "";
@@ -20,31 +20,29 @@ let startRecur  = "";
 let endRecur    = "";
 let countStreak = false;
 
-/* ask workload only if NOT a calendar entry */
-if (!isCalendar) {
-    workload = await tp.system.prompt("Workload in Stunden", "1");
-}
-
 /* 3. Calendar‐specific prompts & file creation */
 if (isCalendar) {
-    dateInput = await tp.system.prompt("Datum (YYYY-MM-DD)", today);
+    const repIn = await tp.system.prompt("Wiederkehrend? y/Enter", "");
+    repeating  = (repIn || "").toLowerCase() === "y";
+    if (repeating) {
+		daysOfWeek = await tp.system.prompt("Tage der Woche (M,T,W,R,F,S,U)", "F");
+		const dateTemplate = moment().format("YYYY-MM-DD");
+		startRecur = await tp.system.prompt("Startdatum der Wiederholung (YYYY-MM-DD), default heute:", dateTemplate);
+		dateInput = (startRecur || "").trim() || dateTemplate;
+		endRecur    = await tp.system.prompt("Enddatum der Wiederholung (YYYY-MM-DD), leer lassen:", dateTemplate);
+		
+    } else {
+	    dateInput = await tp.system.prompt("Datum (YYYY-MM-DD)", today);
+    }
+
     startTime = await tp.system.prompt("Startzeit (HH:MM)", "09:00");
     endTime   = await tp.system.prompt("Endzeit (HH:MM)",   "10:00");
-
     /* calculate workload */
     const wl = moment(endTime, "HH:mm").diff(moment(startTime, "HH:mm"), 'minutes')/60;
     workload = (Math.round(wl*100)/100).toString().replace(/\.00$/,"").replace(/\.0$/,"");
 
-    const repIn = await tp.system.prompt("Wiederkehrend? y/Enter", "");
-    repeating  = (repIn || "").toLowerCase() === "y";
-    if (repeating) {
-        daysOfWeek = await tp.system.prompt("Tage der Woche (M,T,W,R,F,S,U)", "F");
-        const defEnd = moment(dateInput, "YYYY-MM-DD").add(7, "days").format("YYYY-MM-DD");
-        endRecur    = await tp.system.prompt("Enddatum der Wiederholung (YYYY-MM-DD), leer lassen:", defEnd);
-    }
-
-    /* create calendar file (unchanged) */
-    const CAL_ROOT = "Organisation/Calender";
+    /* create calendar file */
+    const CAL_ROOT = "03 Collector/Organisation/Calender";
     let subs = app.vault.getFiles()
         .filter(f => f.path.startsWith(CAL_ROOT + "/"))
         .map(f => f.path.slice(CAL_ROOT.length+1).split("/")[0]);
@@ -53,6 +51,7 @@ if (isCalendar) {
         `In welchen Unterordner? (${subs.join(", ")})`,
         subs[0] || "Appointments"
     );
+    
     const uid = moment().format("YYYYMMDDHHmmssSSS");
     let yaml = `---\n`;
     yaml   += `title: ${taskName}\nallDay: false\nstartTime: ${startTime}\nendTime: ${endTime}\n`;
@@ -77,6 +76,7 @@ if (isCalendar) {
 
 /* 4. Non‐calendar tasks: priority, repeating first, then deadline or streak */
 if (!isCalendar) {
+	workload = await tp.system.prompt("Workload in Stunden", "1");
 	const repIn = await tp.system.prompt("Wiederkehrend? y/Enter", "");
 	repeating  = (repIn || "").toLowerCase() === "y";
 
