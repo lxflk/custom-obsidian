@@ -10,7 +10,7 @@ const taskName = await tp.system.prompt("Aufgabenname");
 
 /* 2. Common fields */
 let workload    = "";
-let priority    = "";
+let priority    = "/";
 let dateInput   = "";
 let startTime   = "";
 let endTime     = "";
@@ -27,7 +27,6 @@ if (!isCalendar) {
 
 /* 3. Calendar‐specific prompts & file creation */
 if (isCalendar) {
-    priority  = "/";
     dateInput = await tp.system.prompt("Datum (YYYY-MM-DD)", today);
     startTime = await tp.system.prompt("Startzeit (HH:MM)", "09:00");
     endTime   = await tp.system.prompt("Endzeit (HH:MM)",   "10:00");
@@ -78,31 +77,31 @@ if (isCalendar) {
 
 /* 4. Non‐calendar tasks: priority, repeating first, then deadline or streak */
 if (!isCalendar) {
-    priority = await tp.system.prompt("Priorität (leer lassen falls tagesgebunden)", "");
+	const repIn = await tp.system.prompt("Wiederkehrend? y/Enter", "");
+	repeating  = (repIn || "").toLowerCase() === "y";
 
-    if (priority.trim() === "") {
-        // Tagesgebunden = only due date
-        priority  = "/";
-        dateInput = await tp.system.prompt("Fälligkeitsdatum (YYYY-MM-DD)", today);
-    } else {
-        // Nicht tagesgebunden: ask repeating first
-        const repIn = await tp.system.prompt("Wiederkehrend? y/Enter", "");
-        repeating  = (repIn || "").toLowerCase() === "y";
+	if (repeating) {
+		daysOfWeek = await tp.system.prompt("Tage der Woche (M,T,W,R,F,S,U)", "F");
+		const dateTemplate = moment().format("YYYY-MM-DD");
+		startRecur = await tp.system.prompt("Startdatum der Wiederholung (YYYY-MM-DD), default heute:", dateTemplate);
+		startRecur = (startRecur || "").trim() || dateTemplate;
+		endRecur    = await tp.system.prompt("Enddatum der Wiederholung (YYYY-MM-DD), leer lassen:", dateTemplate);
 
-        if (repeating) {
-            daysOfWeek = await tp.system.prompt("Tage der Woche (M,T,W,R,F,S,U)", "F");
-            const dateTemplate = moment().format("YYYY-MM-DD");
-            startRecur = await tp.system.prompt("Startdatum der Wiederholung (YYYY-MM-DD), default heute:", dateTemplate);
-			startRecur = (startRecur || "").trim() || dateTemplate;
-            endRecur    = await tp.system.prompt("Enddatum der Wiederholung (YYYY-MM-DD), leer lassen:", dateTemplate);
-
-            const streakAns = await tp.system.prompt("Streak zählen? y/Enter", "");
-            countStreak     = (streakAns || "").toLowerCase() === "y";
-        } else {
-            // not repeating → ask for deadline
-            dateInput = await tp.system.prompt("Deadline (YYYY-MM-DD), leer lassen:", today);
-        }
-    }
+		const streakAns = await tp.system.prompt("Streak zählen? y/Enter", "");
+		countStreak     = (streakAns || "").toLowerCase() === "y";
+	} else {
+		// not repeating → ask for priority 
+		answer = await tp.system.prompt("Priorität (leer lassen falls tagesgebunden)", "");
+		if (answer.trim() === "") {
+			// Tagesgebunden → only due date
+			dateInput = await tp.system.prompt("Fälligkeitsdatum (YYYY-MM-DD)", today);
+		} else {
+			// Nicht Tagesgebunden → ask for deadline
+			priority = answer
+			dateInput = await tp.system.prompt("Deadline (YYYY-MM-DD), leer lassen:", today);
+			dateInput = dateInput.trim();
+		}
+	}
 }
 
 /* 5. Build inline fields */
@@ -110,7 +109,7 @@ const dateField      = (dateInput && !repeating) ? ` [⏳:: ${dateInput}]` : "";
 const repeatingField = repeating ? ` 🔁` : "";
 
 let additionalFields = "";
-if (!repeating && priority.trim() !== "/") {
+if (!repeating && dateInput && priority.trim() !== "/") {
     additionalFields += `
 \t- created:: [::${today}]
 \t- start_prio:: ${priority}`;

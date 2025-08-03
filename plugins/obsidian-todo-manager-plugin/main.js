@@ -219,9 +219,6 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                 }
                 if (!daysOfWeek || !startStopStart || streak == null || !streakStart) continue;
 
-                const expected = this.countExpectedDays(daysOfWeek, streakStart, today.format('YYYY-MM-DD'), moment);
-                const streakMatches = (expected === streak);
-
                 if (wasChecked && doneDate) {
                     if (doneDate.isSame(today, 'day')) continue;
                     streak += 1;
@@ -233,15 +230,18 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                         .trimEnd();
                     lines[i] = line;
                     changed = true;
+                }
 
-                    if (!streakMatches) {
-                        streak = 0;
-                        streakStart = today.format('YYYY-MM-DD');
-                        lines[streakIdx] = lines[streakIdx].replace(/streak:: \d+/, `streak:: 0`);
-                        lines[streakStartIdx] = lines[streakStartIdx]
-                            .replace(/streak_start::\s*(?:\[\:\:)?\d{4}-\d{2}-\d{2}(?:\])?/, `streak_start:: [::${streakStart}]`);
-                        changed = true;
-                    }
+                const expected = this.countExpectedDays(daysOfWeek, streakStart, today.format('YYYY-MM-DD'), moment);
+                const streakMatches = (expected === streak);
+
+                if (!streakMatches) {
+                    streak = 0;
+                    streakStart = today.format('YYYY-MM-DD');
+                    lines[streakIdx] = lines[streakIdx].replace(/streak:: \d+/, `streak:: 0`);
+                    lines[streakStartIdx] = lines[streakStartIdx]
+                        .replace(/streak_start::\s*(?:\[\:\:)?\d{4}-\d{2}-\d{2}(?:\])?/, `streak_start:: [::${streakStart}]`);
+                    changed = true;
                 }
 
                 line = lines[i];
