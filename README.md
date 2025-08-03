@@ -2,10 +2,12 @@
 
 ## Guiding Principle
 **“I see only one move ahead, but always the best move.” ~ José Raúl Capablanca**
+
 There is no need to keep future tasks in mind, because we can work on one task at a time. But how do we know which one that is?
 
 ## What problem does this system solve?
 **On what tasks should I work today?**
+
 There is a correct solution to this problem: take all available tasks, sort them by priority, and work from top to bottom.
 But you don’t want to reassign priorities and sort your tasks manually from scratch every day.
 
