@@ -107,7 +107,10 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                         } else {
                             // only lower priority on off-days if it was ticked
                             if (hadTickDate && prioStr2 !== '/') {
-                                lines[i] = lines[i].replace(/\[🎯:: (\S+?)\]/, `[🎯:: /]`);
+                                lines[i] = lines[i]
+                                    .replace(/\[🎯:: (\S+?)\]/, `[🎯:: /]`)
+                                    .replace('- [x]', '- [ ]')
+                                    .replace(/✅\s*\d{4}-\d{2}-\d{2}/, '');
                                 changed = true;
                             }
                         }
