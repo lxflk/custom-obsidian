@@ -81,7 +81,17 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                     if (daysField) {
                         // parse done date if any, to know if ticked
                         const doneMatch = line.match(/✅\s*(\d{4}-\d{2}-\d{2})/);
+                        const doneDate = doneMatch ? window.moment(doneMatch[1], 'YYYY-MM-DD') : null;
+                        if (doneDate && doneDate.isSame(today, 'day')) continue;
+
                         const hadTickDate = !!doneMatch;
+                        // Always untick on a different day.
+                        if (hadTickDate) {
+                            lines[i] = lines[i]
+                                .replace('- [x]', '- [ ]')
+                                .replace(/✅\s*\d{4}-\d{2}-\d{2}/, '');
+                            changed = true;
+                        }
 
                         // reload priority
                         const prioMatch2 = line.match(/\[🎯:: (\S+?)\]/);
@@ -109,8 +119,6 @@ module.exports = class UpdatePrioPlugin extends Plugin {
                             if (hadTickDate && prioStr2 !== '/') {
                                 lines[i] = lines[i]
                                     .replace(/\[🎯:: (\S+?)\]/, `[🎯:: /]`)
-                                    .replace('- [x]', '- [ ]')
-                                    .replace(/✅\s*\d{4}-\d{2}-\d{2}/, '');
                                 changed = true;
                             }
                         }
